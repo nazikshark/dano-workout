@@ -35,10 +35,13 @@ async function initFirebase() {
 initFirebase();
 
 // --- ФУНКЦИИ ОБЛАКА ---
+// Сохранение
 async function saveToCloud() {
+    if (!currentUserId) return; // Если не выбран юзер, ничего не шлем
     const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
     try {
-        await setDoc(doc(db, "users", "dano_data"), {
+        // Теперь данные будут лежать в users/nazik или users/papa
+        await setDoc(doc(db, "users", currentUserId), {
             workouts: WORKOUTS,
             weights: weights,
             updatedAt: new Date()
@@ -46,13 +49,20 @@ async function saveToCloud() {
     } catch (e) { console.error("Ошибка сохранения: ", e); }
 }
 
+// Загрузка
 async function loadFromCloud() {
+    if (!currentUserId) return;
     const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-    const docSnap = await getDoc(doc(db, "users", "dano_data"));
+    
+    const docSnap = await getDoc(doc(db, "users", currentUserId));
     if (docSnap.exists()) {
         const data = docSnap.data();
         WORKOUTS = data.workouts;
         weights = data.weights;
+        renderWorkouts();
+    } else {
+        // Если данных для этого юзера еще нет в облаке, берем пустой список
+        WORKOUTS = []; 
         renderWorkouts();
     }
 }
@@ -68,7 +78,7 @@ const SVG_OPTIONS=[
   {id:'legs',label:'Ноги'},{id:'core',label:'Пресс'},
   {id:'glutes',label:'Ягодицы'},{id:'full',label:'Всё тело'},
 ];
-
+let currentUserId = null;
 let WORKOUTS=JSON.parse(localStorage.getItem('dano_wk')||'null')||[
   {id:'arms',name:'Руки',sub:'Бицепс & Трицепс',svgId:'arms',color:'#0066FF',bg:'#EBF2FF',
     exercises:[
@@ -86,9 +96,10 @@ let WORKOUTS=JSON.parse(localStorage.getItem('dano_wk')||'null')||[
 ];
 let weights=JSON.parse(localStorage.getItem('dano_wgt')||'{}');
 const persist = () => {
-    localStorage.setItem('dano_wk', JSON.stringify(WORKOUTS));
-    localStorage.setItem('dano_wgt', JSON.stringify(weights));
-    saveToCloud(); // Теперь данные улетают в Firebase
+    if (!currentUserId) return;
+    localStorage.setItem('dano_wk_' + currentUserId, JSON.stringify(WORKOUTS));
+    localStorage.setItem('dano_wgt_' + currentUserId, JSON.stringify(weights));
+    saveToCloud();
 };
 
 /* STATE */
@@ -119,12 +130,17 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 
 /* S1→S2 */
-function selectUser(name,emoji,color){
-  currentUser={name,emoji,color};
-  document.getElementById('user-pill-dot').textContent=emoji;
-  document.getElementById('user-pill-dot').style.background=color+'22';
-  document.getElementById('user-pill-name').textContent=name;
-  renderWorkouts();goTo('s-workouts');
+function selectUser(name, emoji, color, userId) { 
+  currentUserId = userId; 
+  currentUser = {name, emoji, color};
+  
+  document.getElementById('user-pill-dot').textContent = emoji;
+  document.getElementById('user-pill-dot').style.background = color + '22';
+  document.getElementById('user-pill-name').textContent = name;
+  
+  loadFromCloud();
+  renderWorkouts();
+  goTo('s-workouts');
 }
 
 function renderWorkouts(){
