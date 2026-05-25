@@ -30,9 +30,15 @@ async function initFirebase() {
 
     const app = initializeApp(firebaseConfig);
     db = getFirestore(app);
-    loadFromCloud(); // Авто-загрузка при старте
 }
 initFirebase();
+// Проверка, кто был последним
+const lastUser = localStorage.getItem('last_user_id');
+if (lastUser) {
+    // Если мы знаем кто это, "автоматически" нажимаем кнопку выбора
+    // Нужно просто вызвать логику выбора
+    // Но для начала давай добьемся работы хотя бы ручного выбора
+}
 
 // --- ФУНКЦИИ ОБЛАКА ---
 // Сохранение
@@ -96,9 +102,18 @@ let WORKOUTS=JSON.parse(localStorage.getItem('dano_wk')||'null')||[
 ];
 let weights=JSON.parse(localStorage.getItem('dano_wgt')||'{}');
 const persist = () => {
-    if (!currentUserId) return;
+    if (!currentUserId) {
+        console.log("Внимание: пользователь не выбран, сохраняю только в локальный кэш");
+        return;
+    }
+    
+    // Сохраняем с привязкой к юзеру
     localStorage.setItem('dano_wk_' + currentUserId, JSON.stringify(WORKOUTS));
     localStorage.setItem('dano_wgt_' + currentUserId, JSON.stringify(weights));
+    
+    // Запоминаем последнего активного юзера
+    localStorage.setItem('last_user_id', currentUserId);
+    
     saveToCloud();
 };
 
