@@ -43,36 +43,38 @@ if (lastUser) {
 // --- ФУНКЦИИ ОБЛАКА ---
 // Сохранение
 async function saveToCloud() {
-    if (!currentUserId) return; // Если не выбран юзер, ничего не шлем
+    if (!currentUserId) return;
     const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-    try {
-        // Теперь данные будут лежать в users/nazik или users/papa
-        await setDoc(doc(db, "users", currentUserId), {
-            workouts: WORKOUTS,
-            weights: weights,
-            updatedAt: new Date()
-        });
-    } catch (e) { console.error("Ошибка сохранения: ", e); }
+    
+    // Сохраняем ОБЩИЕ тренировки в коллекцию common
+    await setDoc(doc(db, "common", "workouts"), { list: WORKOUTS });
+    
+    // Сохраняем ЛИЧНЫЕ веса в коллекцию users
+    await setDoc(doc(db, "users", currentUserId), { weights: weights });
 }
 
-// Загрузка
+// 3. Обновленная функция загрузки
 async function loadFromCloud() {
-    if (!currentUserId) return;
     const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
     
-    const docSnap = await getDoc(doc(db, "users", currentUserId));
-    if (docSnap.exists()) {
-        const data = docSnap.data();
-        WORKOUTS = data.workouts;
-        weights = data.weights;
-        renderWorkouts();
-    } else {
-        // Если данных для этого юзера еще нет в облаке, берем пустой список
-        WORKOUTS = []; 
-        renderWorkouts();
+    // Грузим общие тренировки
+    const wSnap = await getDoc(doc(db, "common", "workouts"));
+    if (wSnap.exists()) WORKOUTS = wSnap.data().list;
+    
+    // Грузим свои веса
+    if (currentUserId) {
+        const uSnap = await getDoc(doc(db, "users", currentUserId));
+        if (uSnap.exists()) weights = uSnap.data().weights;
+        
+        // Грузим веса другого (для отображения)
+        const otherId = (currentUserId === 'nazik') ? 'papa' : 'nazik';
+        const oSnap = await getDoc(doc(db, "users", otherId));
+        if (oSnap.exists()) otherUserWeights = oSnap.data().weights;
     }
+    renderWorkouts();
 }
 /* DATA */
+let otherUserWeights = {};
 const COLORS_LIST=[
   {hex:'#0066FF',bg:'#EBF2FF'},{hex:'#FF3B30',bg:'#FFF0EE'},
   {hex:'#34C759',bg:'#EBFAF1'},{hex:'#FF9500',bg:'#FFF5E6'},
