@@ -129,6 +129,13 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 function selectUser(name, emoji, color, userId) {
   currentUserId = userId;
   currentUser = { name, emoji, color };
+  const savedWorkouts = localStorage.getItem('dano_wk_' + currentUserId);
+  const savedWeights = localStorage.getItem('dano_wgt_' + currentUserId);
+  const otherId = currentUserId === 'nazik' ? 'papa' : 'nazik';
+  const savedOtherWeights = localStorage.getItem('dano_wgt_' + otherId);
+  if (savedWorkouts) WORKOUTS = JSON.parse(savedWorkouts);
+  weights = savedWeights ? JSON.parse(savedWeights) : {};
+  otherUserWeights = savedOtherWeights ? JSON.parse(savedOtherWeights) : {};
   document.getElementById('user-pill-dot').textContent = emoji;
   document.getElementById('user-pill-dot').style.background = color + '22';
   document.getElementById('user-pill-name').textContent = name;
@@ -240,6 +247,34 @@ function selectWorkout(id) {
 /* helpers для отображения веса */
 const bandEmoji = { black: '⚫', green: '🟢', red: '🔴' };
 
+function isDbEquip(equip) {
+  return equip === 'db1' || equip === 'db2';
+}
+
+function getEffectiveEquip(stored, ex) {
+  if (stored && typeof stored === 'object' && stored.equip) return stored.equip;
+  return ex.equip || 'db2';
+}
+
+function makeDefaultDbState(ex, equip, band = null) {
+  const kg = ex.kg || 2;
+  const plates = Math.max(0, kg - 2);
+  return { equip, upper: { left: plates, right: plates }, lower: { left: plates, right: plates }, band };
+}
+
+function makeWeightStateForEquip(ex, equip, previous) {
+  if (equip === 'band') {
+    return { equip, band: previous?.band || ex.bandColor || 'black' };
+  }
+  if (previous && typeof previous === 'object' && previous.upper !== undefined) {
+    const next = JSON.parse(JSON.stringify(previous));
+    next.equip = equip;
+    if (!('band' in next)) next.band = null;
+    return next;
+  }
+  return makeDefaultDbState(ex, equip, null);
+}
+
 function getDisplayWeight(stored, equip, fallbackKg, bandColorFallback) {
   // equip = актуальный equip упражнения
   if (equip === 'band') {
@@ -273,8 +308,8 @@ function renderExercises() {
     const stored = weights[ex.id];
     const otherStored = otherWeights[ex.id];
 
-    const mine = getDisplayWeight(stored, ex.equip, ex.kg, ex.bandColor);
-    const theirs = getDisplayWeight(otherStored, ex.equip, ex.kg, ex.bandColor);
+    const mine = getDisplayWeight(stored, getEffectiveEquip(stored, ex), ex.kg, ex.bandColor);
+    const theirs = getDisplayWeight(otherStored, getEffectiveEquip(otherStored, ex), ex.kg, ex.bandColor);
     const otherName = otherId === 'papa' ? 'Папа' : 'Nazik';
 
     return `
@@ -306,7 +341,7 @@ function renderExercises() {
       <div class="ex-weight-col">
         <div class="ex-kg-num" id="exkg-${ex.id}" style="color:${c}">${mine.main}</div>
         <div class="ex-kg-unit">${mine.sub}</div>
-        <div style="font-size:8px; color:#AEAEB8; class="ex-other-weight">${otherName}: ${theirs.main}</div>
+        <div class="ex-other-weight" style="font-size:8px; color:#AEAEB8;">${otherName}: ${theirs.main}</div>
       </div>
     </div>`;
   }).join('');
@@ -383,19 +418,11 @@ function saveExercise() {
 
   if (em_editId) {
     const ex = currentWorkout.exercises.find(e => e.id === em_editId);
-    const prevEquip = ex.equip;
+    const prevEquip = getEffectiveEquip(weights[em_editId], ex);
     Object.assign(ex, { name, emoji, sets: setsVal, reps: repsVal, equip: em_equip, bandColor: em_bandColor });
 
-    // FIX 1: если инвентарь изменился — сбрасываем сохранённый вес
-    // чтобы модалка открывалась корректно с новым типом
-    if (prevEquip !== em_equip) {
-      delete weights[em_editId];
-    }
-
-    // синхронизируем цвет резинки если band
-    if (em_equip === 'band') {
-      weights[em_editId] = { band: em_bandColor };
-    }
+    weights[em_editId] = makeWeightStateForEquip(ex, em_equip, prevEquip === em_equip ? weights[em_editId] : null);
+    if (em_equip === 'band') weights[em_editId].band = em_bandColor;
   } else {
     // FIX 2: новое упражнение с резинкой — сразу сохраняем bandColor, kg=0
     const newId = Date.now();
@@ -405,10 +432,8 @@ function saveExercise() {
       kg: em_equip === 'band' ? 0 : 2
     };
     currentWorkout.exercises.push(newEx);
-    // сразу пишем в weights чтобы не было начального kg:2
-    if (em_equip === 'band') {
-      weights[newId] = { band: em_bandColor };
-    }
+    weights[newId] = makeWeightStateForEquip(newEx, em_equip, null);
+    if (em_equip === 'band') weights[newId].band = em_bandColor;
   }
   persist(); renderExercises(); closeModal('exercise-modal');
 }
@@ -416,9 +441,8 @@ function saveExercise() {
 /* WEIGHT MODAL */
 function openWeightModal(exId) {
   wgt_exId = exId;
-  // FIX 1: всегда читаем equip из актуального объекта упражнения
   const ex = currentWorkout.exercises.find(e => e.id === exId);
-  wgt_equip = ex.equip || 'db2';
+  wgt_equip = getEffectiveEquip(weights[exId], ex);
 
   document.getElementById('wgt-name').textContent = ex.name;
 
@@ -434,17 +458,17 @@ function openWeightModal(exId) {
     ['black', 'green', 'red'].forEach(c => {
       document.getElementById('bo-' + c)?.classList.toggle('sel', c === savedBand);
     });
-    wgt_state = { upper: { left: 0, right: 0 }, lower: { left: 0, right: 0 }, band: savedBand };
+    wgt_state = { equip: 'band', upper: { left: 0, right: 0 }, lower: { left: 0, right: 0 }, band: savedBand };
   } else {
     const saved = weights[exId];
     if (saved && typeof saved === 'object' && saved.upper !== undefined) {
       // корректный объект гантелей
       wgt_state = JSON.parse(JSON.stringify(saved));
+      wgt_state.equip = wgt_equip;
+      if (!('band' in wgt_state)) wgt_state.band = null;
     } else {
       // FIX 1: если сохранённый вес — от резинки или отсутствует, инициализируем заново
-      const kg = ex.kg || 2;
-      const plates = Math.max(0, kg - 2);
-      wgt_state = { upper: { left: plates, right: plates }, lower: { left: plates, right: plates }, band: null };
+      wgt_state = makeDefaultDbState(ex, wgt_equip, null);
     }
 
     // FIX 3: показываем секцию резинки внутри дб-секции (band as add-on)
@@ -469,6 +493,15 @@ function openWeightModal(exId) {
 function pickBandOnly(color) {
   wgt_state.band = color;
   ['black', 'green', 'red'].forEach(c => document.getElementById('bo-' + c)?.classList.toggle('sel', c === color));
+}
+
+function pickDbBand(color) {
+  if (!isDbEquip(wgt_equip)) return;
+  wgt_state.band = color;
+  ['none', 'black', 'green', 'red'].forEach(b => {
+    const el = document.getElementById('wb-' + b);
+    if (el) el.classList.toggle('on', (b === 'none' ? null : b) === color);
+  });
 }
 
 function setActiveDb(db) { wgt_db = db; updateWgtUI(); }
@@ -533,9 +566,10 @@ function renderPlates(db, side, elId) {
 function saveWeight() {
   const ex = currentWorkout.exercises.find(e => e.id === wgt_exId);
   if (wgt_equip === 'band') {
-    ex.bandColor = wgt_state.band || ex.bandColor || 'black';
-    weights[wgt_exId] = { band: ex.bandColor };
+    const bandColor = wgt_state.band || ex.bandColor || 'black';
+    weights[wgt_exId] = { equip: 'band', band: bandColor };
   } else {
+    wgt_state.equip = wgt_equip;
     weights[wgt_exId] = JSON.parse(JSON.stringify(wgt_state));
   }
   persist();
