@@ -1,23 +1,20 @@
 function checkPassword() {
   const pass = document.getElementById('access-pass').value;
   const lockScreen = document.getElementById('lock-screen');
-
   if (pass === "1234") {
     lockScreen.style.opacity = '0';
-    setTimeout(() => {
-      lockScreen.style.display = 'none';
-    }, 500);
+    setTimeout(() => { lockScreen.style.display = 'none'; }, 500);
   } else {
     document.getElementById('access-pass').style.borderColor = 'var(--red)';
     alert("Неверный пароль!");
   }
 }
+
 // --- FIREBASE INIT ---
 let db;
 async function initFirebase() {
   const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js");
   const { getFirestore } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-
   const firebaseConfig = {
     apiKey: "AIzaSyA985u6sB7RbrprmLbW3BWObWGeHkERwW4",
     authDomain: "danoworkout-42dae.firebaseapp.com",
@@ -27,55 +24,34 @@ async function initFirebase() {
     appId: "1:736598871384:web:feb3c20baa36691cff692d",
     measurementId: "G-C3QWHJBCZK"
   };
-
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
 }
 initFirebase();
-// Проверка, кто был последним
-const lastUser = localStorage.getItem('last_user_id');
-if (lastUser) {
-  // Если мы знаем кто это, "автоматически" нажимаем кнопку выбора
-  // Нужно просто вызвать логику выбора
-  // Но для начала давай добьемся работы хотя бы ручного выбора
-}
 
-// --- ФУНКЦИИ ОБЛАКА ---
-// Сохранение
+// --- ОБЛАКО ---
 async function saveToCloud() {
   if (!currentUserId) return;
   const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-
-  // Сохраняем ОБЩИЕ тренировки в коллекцию common
   await setDoc(doc(db, "common", "workouts"), { list: WORKOUTS });
-
-  // Сохраняем ЛИЧНЫЕ веса в коллекцию users
   await setDoc(doc(db, "users", currentUserId), { weights: weights });
 }
 
-// 3. Обновленная функция загрузки
 async function loadFromCloud() {
   const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-
-  // Грузим общие тренировки
   const wSnap = await getDoc(doc(db, "common", "workouts"));
   if (wSnap.exists()) WORKOUTS = wSnap.data().list;
-
-  // Грузим свои веса
   if (currentUserId) {
     const uSnap = await getDoc(doc(db, "users", currentUserId));
-    if (uSnap.exists()) weights = uSnap.data().weights;
-
-    // Грузим веса другого (для отображения)
-    const otherId = (currentUserId === 'nazik') ? 'papa' : 'nazik';
+    if (uSnap.exists()) weights = uSnap.data().weights || {};
+    const otherId = currentUserId === 'nazik' ? 'papa' : 'nazik';
     const oSnap = await getDoc(doc(db, "users", otherId));
-    if (oSnap.exists()) otherUserWeights = oSnap.data().weights;
+    if (oSnap.exists()) otherUserWeights = oSnap.data().weights || {};
   }
   renderWorkouts();
-  if (document.getElementById('s-exercises').classList.contains('active')) {
-    renderExercises();
-  }
+  if (document.getElementById('s-exercises').classList.contains('active')) renderExercises();
 }
+
 /* DATA */
 let otherUserWeights = {};
 const COLORS_LIST = [
@@ -89,6 +65,7 @@ const SVG_OPTIONS = [
   { id: 'legs', label: 'Ноги' }, { id: 'core', label: 'Пресс' },
   { id: 'glutes', label: 'Ягодицы' }, { id: 'full', label: 'Всё тело' },
 ];
+
 let currentUserId = null;
 let WORKOUTS = JSON.parse(localStorage.getItem('dano_wk') || 'null') || [
   {
@@ -110,19 +87,12 @@ let WORKOUTS = JSON.parse(localStorage.getItem('dano_wk') || 'null') || [
   },
 ];
 let weights = JSON.parse(localStorage.getItem('dano_wgt') || '{}');
-const persist = () => {
-  if (!currentUserId) {
-    console.log("Внимание: пользователь не выбран, сохраняю только в локальный кэш");
-    return;
-  }
 
-  // Сохраняем с привязкой к юзеру
+const persist = () => {
+  if (!currentUserId) return;
   localStorage.setItem('dano_wk_' + currentUserId, JSON.stringify(WORKOUTS));
   localStorage.setItem('dano_wgt_' + currentUserId, JSON.stringify(weights));
-
-  // Запоминаем последнего активного юзера
   localStorage.setItem('last_user_id', currentUserId);
-
   saveToCloud();
 };
 
@@ -159,11 +129,9 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 function selectUser(name, emoji, color, userId) {
   currentUserId = userId;
   currentUser = { name, emoji, color };
-
   document.getElementById('user-pill-dot').textContent = emoji;
   document.getElementById('user-pill-dot').style.background = color + '22';
   document.getElementById('user-pill-name').textContent = name;
-
   loadFromCloud();
   renderWorkouts();
   goTo('s-workouts');
@@ -198,8 +166,12 @@ function renderWorkouts() {
 function toggleDelW(e, id) {
   e.stopPropagation();
   const btn = document.getElementById('wdel-' + id);
-  if (btn.classList.contains('expanded')) { WORKOUTS = WORKOUTS.filter(w => w.id !== id); persist(); renderWorkouts(); }
-  else { document.querySelectorAll('.wcard-del-btn.expanded').forEach(b => b.classList.remove('expanded')); btn.classList.add('expanded'); }
+  if (btn.classList.contains('expanded')) {
+    WORKOUTS = WORKOUTS.filter(w => w.id !== id); persist(); renderWorkouts();
+  } else {
+    document.querySelectorAll('.wcard-del-btn.expanded').forEach(b => b.classList.remove('expanded'));
+    btn.classList.add('expanded');
+  }
 }
 
 /* WORKOUT MODAL */
@@ -215,9 +187,16 @@ function buildWmColorRow() {
     <div class="color-sw${wm_color === c.hex ? ' sel' : ''}" style="background:${c.hex}"
       onclick="pickWmColor('${c.hex}','${c.bg}',this)"></div>`).join('');
 }
-function pickWmSvg(id, el) { wm_svgId = id; document.querySelectorAll('.svg-opt').forEach(e => e.classList.remove('sel')); el.classList.add('sel'); }
-function pickWmColor(hex, bg, el) { wm_color = hex; wm_bg = bg; document.querySelectorAll('.color-sw').forEach(e => e.classList.remove('sel')); el.classList.add('sel'); }
-
+function pickWmSvg(id, el) {
+  wm_svgId = id;
+  document.querySelectorAll('.svg-opt').forEach(e => e.classList.remove('sel'));
+  el.classList.add('sel');
+}
+function pickWmColor(hex, bg, el) {
+  wm_color = hex; wm_bg = bg;
+  document.querySelectorAll('.color-sw').forEach(e => e.classList.remove('sel'));
+  el.classList.add('sel');
+}
 function openWorkoutModal(id, e) {
   if (e) e.stopPropagation();
   wm_editId = id;
@@ -252,18 +231,40 @@ function saveWorkout() {
 function selectWorkout(id) {
   document.querySelectorAll('.wcard-del-btn.expanded').forEach(b => b.classList.remove('expanded'));
   currentWorkout = WORKOUTS.find(w => w.id === id);
-  // FIX: badge shows only name, not svgId+name
   document.getElementById('ex-badge-pill').innerHTML = currentWorkout.name;
   document.getElementById('ex-badge-pill').style.background = currentWorkout.bg;
   document.getElementById('ex-badge-pill').style.color = currentWorkout.color;
   renderExercises(); goTo('s-exercises');
 }
 
+/* helpers для отображения веса */
+const bandEmoji = { black: '⚫', green: '🟢', red: '🔴' };
+
+function getDisplayWeight(stored, equip, fallbackKg, bandColorFallback) {
+  // equip = актуальный equip упражнения
+  if (equip === 'band') {
+    // для резинки показываем эмодзи
+    const color = (stored && stored.band) || bandColorFallback || 'black';
+    return { main: bandEmoji[color], sub: 'резинка' };
+  }
+  // гантели
+  if (stored && typeof stored === 'object') {
+    const total = 2 + (stored.upper?.left || 0) + (stored.upper?.right || 0);
+    // если к гантелям добавлена резинка — показываем эмодзи + вес
+    const main = stored.band ? bandEmoji[stored.band] + ' ' + total : total;
+    return { main, sub: 'кг' };
+  }
+  return { main: stored ?? fallbackKg, sub: 'кг' };
+}
+
 function renderExercises() {
   const c = currentWorkout.color, bg = currentWorkout.bg;
-  const otherId = (currentUserId === 'nazik') ? 'papa' : 'nazik';
+  const otherId = currentUserId === 'nazik' ? 'papa' : 'nazik';
+  // Берём веса другого юзера: сначала из облачного кэша, потом localStorage
   const otherWeightsRaw = localStorage.getItem('dano_wgt_' + otherId);
-  const otherWeights = otherWeightsRaw ? JSON.parse(otherWeightsRaw) : {};
+  const otherWeights = Object.keys(otherUserWeights).length > 0
+    ? otherUserWeights
+    : (otherWeightsRaw ? JSON.parse(otherWeightsRaw) : {});
 
   document.getElementById('ex-eyebrow').textContent = currentWorkout.exercises.length + ' упр';
   document.getElementById('ex-title').textContent = currentWorkout.sub;
@@ -272,49 +273,42 @@ function renderExercises() {
     const stored = weights[ex.id];
     const otherStored = otherWeights[ex.id];
 
-    // Логика отображения веса
-    const getKgText = (s, equip) => {
-      if (!s && s !== 0) return null;
-      if (equip === 'band') {
-        const bandEmoji = { black: '⚫', green: '🟢', red: '🔴' };
-        return bandEmoji[s.band || 'black'];
-      }
-      if (typeof s === 'object') return 2 + (s.upper?.left || 0) + (s.upper?.right || 0);
-      return s;
-    };
-
-    const kgDisplay = getKgText(stored, ex.equip) || ex.kg;
-    const otherKgDisplay = getKgText(otherStored, ex.equip) || (ex.equip !== 'band' ? ex.kg : '');
+    const mine = getDisplayWeight(stored, ex.equip, ex.kg, ex.bandColor);
+    const theirs = getDisplayWeight(otherStored, ex.equip, ex.kg, ex.bandColor);
+    const otherName = otherId === 'papa' ? 'Папа' : 'Nazik';
 
     return `
-        <div class="ex-card" id="excard-${ex.id}" style="animation-delay:${i * .04 + .04}s">
-          <div class="ex-del-wrap">
-            <button class="ex-del-btn" id="exdel-${ex.id}" onclick="toggleDelEx(event,${ex.id})">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5h6" stroke="var(--red)" stroke-width="1.8" stroke-linecap="round"/></svg>
-            </button>
-          </div>
-          <div class="ex-icon" style="background:${bg}">${ex.emoji || '💪'}</div>
-          <div class="ex-info">
-  <div class="ex-name">${ex.name}</div>
-  <div class="ex-sets">${ex.sets} × ${ex.reps}</div>
-  <div class="ex-actions-row">
-    <button class="ex-btn ex-btn-weight" onclick="openWeightModal(${ex.id})">
-      <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-        <path d="M8.5 1.5l2 2L4 10H2v-2L8.5 1.5z" stroke="${c}" stroke-width="1.3" fill="none"/>
-      </svg>
-      Изменить вес
-    </button>
-    <button class="ex-btn ex-btn-edit" onclick="openExModal(${ex.id})">
-      ✏️ Изменить упражнение
-    </button>
-  </div>
-</div>
-          <div class="ex-weight-col">
-            <div class="ex-kg-num" style="color:${c}">${kgDisplay}</div>
-            <div class="ex-kg-unit">${ex.equip === 'band' ? 'резинка' : 'кг'}</div>
-            <div style="font-size:8px; color:#AEAEB8; margin-top:4px; opacity:0.7;">${otherId === 'papa' ? 'Папа' : 'Nazik'}: ${otherKgDisplay}</div>
-          </div>
-        </div>`;
+    <div class="ex-card" id="excard-${ex.id}" style="animation-delay:${i * .04 + .04}s">
+      <div class="ex-del-wrap">
+        <button class="ex-del-btn" id="exdel-${ex.id}" onclick="toggleDelEx(event,${ex.id})">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M2 5h6" stroke="var(--red)" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span class="ex-del-label">Удалить?</span>
+        </button>
+      </div>
+      <div class="ex-icon" style="background:${bg}">${ex.emoji || '💪'}</div>
+      <div class="ex-info">
+        <div class="ex-name">${ex.name}</div>
+        <div class="ex-sets">${ex.sets} × ${ex.reps}</div>
+        <div class="ex-actions-row">
+          <button class="ex-btn ex-btn-weight" onclick="openWeightModal(${ex.id})">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+              <path d="M8.5 1.5l2 2L4 10H2v-2L8.5 1.5z" stroke="${c}" stroke-width="1.3" fill="none"/>
+            </svg>
+            Изменить вес
+          </button>
+          <button class="ex-btn ex-btn-edit" onclick="openExModal(${ex.id})">
+            ✏️ Изменить упражнение
+          </button>
+        </div>
+      </div>
+      <div class="ex-weight-col">
+        <div class="ex-kg-num" id="exkg-${ex.id}" style="color:${c}">${mine.main}</div>
+        <div class="ex-kg-unit">${mine.sub}</div>
+        <div style="font-size:8px; color:#AEAEB8; class="ex-other-weight">${otherName}: ${theirs.main}</div>
+      </div>
+    </div>`;
   }).join('');
 }
 
@@ -379,25 +373,42 @@ function openExModal(id) {
   if (em_equip === 'band') selectBandColor(em_bandColor);
   openModal('exercise-modal');
 }
+
 function saveExercise() {
   const name = document.getElementById('em-name').value.trim();
   const emoji = document.getElementById('em-emoji').value.trim() || '💪';
   const setsVal = parseInt(document.getElementById('sets-custom').value) || em_sets;
   const repsVal = parseInt(document.getElementById('reps-custom').value) || em_reps;
   if (!name) { document.getElementById('em-name').focus(); return; }
+
   if (em_editId) {
     const ex = currentWorkout.exercises.find(e => e.id === em_editId);
+    const prevEquip = ex.equip;
     Object.assign(ex, { name, emoji, sets: setsVal, reps: repsVal, equip: em_equip, bandColor: em_bandColor });
-    // sync band color into saved weight state if band equip
+
+    // FIX 1: если инвентарь изменился — сбрасываем сохранённый вес
+    // чтобы модалка открывалась корректно с новым типом
+    if (prevEquip !== em_equip) {
+      delete weights[em_editId];
+    }
+
+    // синхронизируем цвет резинки если band
     if (em_equip === 'band') {
-      if (!weights[em_editId] || typeof weights[em_editId] !== 'object') weights[em_editId] = {};
-      weights[em_editId].band = em_bandColor;
+      weights[em_editId] = { band: em_bandColor };
     }
   } else {
-    currentWorkout.exercises.push({
-      id: Date.now(), name, emoji, sets: setsVal, reps: repsVal,
-      equip: em_equip, bandColor: em_bandColor, kg: 2
-    });
+    // FIX 2: новое упражнение с резинкой — сразу сохраняем bandColor, kg=0
+    const newId = Date.now();
+    const newEx = {
+      id: newId, name, emoji, sets: setsVal, reps: repsVal,
+      equip: em_equip, bandColor: em_bandColor,
+      kg: em_equip === 'band' ? 0 : 2
+    };
+    currentWorkout.exercises.push(newEx);
+    // сразу пишем в weights чтобы не было начального kg:2
+    if (em_equip === 'band') {
+      weights[newId] = { band: em_bandColor };
+    }
   }
   persist(); renderExercises(); closeModal('exercise-modal');
 }
@@ -405,35 +416,52 @@ function saveExercise() {
 /* WEIGHT MODAL */
 function openWeightModal(exId) {
   wgt_exId = exId;
+  // FIX 1: всегда читаем equip из актуального объекта упражнения
   const ex = currentWorkout.exercises.find(e => e.id === exId);
   wgt_equip = ex.equip || 'db2';
+
   document.getElementById('wgt-name').textContent = ex.name;
 
   const isBand = wgt_equip === 'band';
+
+  // показываем нужную секцию
   document.getElementById('wgt-db-section').style.display = isBand ? 'none' : '';
   document.getElementById('wgt-band-section').style.display = isBand ? '' : 'none';
   document.getElementById('wgt-sub').textContent = isBand ? 'Выбор резинки' : 'Детальное распределение нагрузок';
 
   if (isBand) {
-    // sync band color from exercise definition
     const savedBand = (weights[exId] && weights[exId].band) || ex.bandColor || 'black';
     ['black', 'green', 'red'].forEach(c => {
       document.getElementById('bo-' + c)?.classList.toggle('sel', c === savedBand);
     });
-    wgt_state.band = savedBand;
+    wgt_state = { upper: { left: 0, right: 0 }, lower: { left: 0, right: 0 }, band: savedBand };
   } else {
     const saved = weights[exId];
-    if (saved && typeof saved === 'object') {
+    if (saved && typeof saved === 'object' && saved.upper !== undefined) {
+      // корректный объект гантелей
       wgt_state = JSON.parse(JSON.stringify(saved));
     } else {
-      const plates = Math.max(0, (saved || ex.kg || 2) - 2);
+      // FIX 1: если сохранённый вес — от резинки или отсутствует, инициализируем заново
+      const kg = ex.kg || 2;
+      const plates = Math.max(0, kg - 2);
       wgt_state = { upper: { left: plates, right: plates }, lower: { left: plates, right: plates }, band: null };
     }
-    // show/hide lower row for db1
+
+    // FIX 3: показываем секцию резинки внутри дб-секции (band as add-on)
+    // Синхронизируем чипы резинки в wgt-db-section если они есть
+    if (document.getElementById('wb-none')) {
+      const bandIds = ['none', 'black', 'green', 'red'];
+      bandIds.forEach(b => {
+        const el = document.getElementById('wb-' + b);
+        if (el) el.classList.toggle('on', (b === 'none' ? null : b) === wgt_state.band);
+      });
+    }
+
     document.getElementById('dbrow-lower').style.display = wgt_equip === 'db1' ? 'none' : '';
     wgt_db = 'upper'; wgt_side = 'left'; wgt_symm = true;
     document.getElementById('symm-box').classList.add('on');
   }
+
   updateWgtUI();
   openModal('weight-modal');
 }
@@ -446,7 +474,11 @@ function pickBandOnly(color) {
 function setActiveDb(db) { wgt_db = db; updateWgtUI(); }
 function setZone(db, side, e) { e.stopPropagation(); wgt_db = db; wgt_side = side; updateWgtUI(); }
 function toggleSymm() { wgt_symm = !wgt_symm; document.getElementById('symm-box').classList.toggle('on', wgt_symm); }
-function cloneDb(src) { const tgt = src === 'upper' ? 'lower' : 'upper'; wgt_state[tgt] = JSON.parse(JSON.stringify(wgt_state[src])); updateWgtUI(); }
+function cloneDb(src) {
+  const tgt = src === 'upper' ? 'lower' : 'upper';
+  wgt_state[tgt] = JSON.parse(JSON.stringify(wgt_state[src]));
+  updateWgtUI();
+}
 
 function modifyPlate(delta) {
   let v = wgt_state[wgt_db][wgt_side];
@@ -474,7 +506,11 @@ function updateWgtUI() {
 }
 
 function renderPlates(db, side, elId) {
-  const SIZES = [{ w: 14, fill: '#FF3B30', dark: '#D4291F', val: 5 }, { w: 10, fill: '#34C759', dark: '#1A9E45', val: 2 }, { w: 7, fill: '#0066FF', dark: '#004FCC', val: 1 }];
+  const SIZES = [
+    { w: 14, fill: '#FF3B30', dark: '#D4291F', val: 5 },
+    { w: 10, fill: '#34C759', dark: '#1A9E45', val: 2 },
+    { w: 7, fill: '#0066FF', dark: '#004FCC', val: 1 },
+  ];
   let rem = wgt_state[db][side]; const plates = [];
   for (const s of SIZES) { while (rem >= s.val && plates.length < 6) { plates.push(s); rem -= s.val; } }
   let html = '';
@@ -482,13 +518,13 @@ function renderPlates(db, side, elId) {
     let lx = 42; plates.forEach(p => {
       lx -= p.w;
       html += `<rect x="${lx}" y="14" width="${p.w - 2}" height="24" rx="3" fill="${p.fill}"/>
-           <rect x="${lx + 2}" y="17" width="${p.w - 6}" height="18" rx="2" fill="${p.dark}" opacity=".5"/>`;
+               <rect x="${lx + 2}" y="17" width="${p.w - 6}" height="18" rx="2" fill="${p.dark}" opacity=".5"/>`;
     });
-  }
-  else {
+  } else {
     let rx = 198; plates.forEach(p => {
       html += `<rect x="${rx + 2}" y="14" width="${p.w - 2}" height="24" rx="3" fill="${p.fill}"/>
-           <rect x="${rx + 4}" y="17" width="${p.w - 6}" height="18" rx="2" fill="${p.dark}" opacity=".5"/>`; rx += p.w;
+               <rect x="${rx + 4}" y="17" width="${p.w - 6}" height="18" rx="2" fill="${p.dark}" opacity=".5"/>`;
+      rx += p.w;
     });
   }
   const el = document.getElementById(elId); if (el) el.innerHTML = html;
@@ -497,28 +533,18 @@ function renderPlates(db, side, elId) {
 function saveWeight() {
   const ex = currentWorkout.exercises.find(e => e.id === wgt_exId);
   if (wgt_equip === 'band') {
-    // sync band color back into exercise definition
     ex.bandColor = wgt_state.band || ex.bandColor || 'black';
     weights[wgt_exId] = { band: ex.bandColor };
   } else {
     weights[wgt_exId] = JSON.parse(JSON.stringify(wgt_state));
   }
   persist();
-  // update display
-  const stored = weights[wgt_exId];
-  const bandEmoji = { black: '⚫', green: '🟢', red: '🔴' };
-  let display;
-  if (wgt_equip === 'band') {
-    display = bandEmoji[stored.band || 'black'];
-  } else {
-    const total = 2 + wgt_state.upper.left + wgt_state.upper.right;
-    display = stored.band ? bandEmoji[stored.band] + ' ' + total : total;
-  }
-  const el = document.getElementById('exkg-' + wgt_exId);
-  if (el) { el.textContent = display; el.style.transform = 'scale(1.2)'; setTimeout(() => el.style.transform = '', 220); }
-  closeModal('weight-modal');
   renderExercises();
+  closeModal('weight-modal');
 }
+
+/* CSS-класс для веса другого юзера — добавь в styles.css если нет */
+// .ex-other-weight { font-size: 10px; color: #AEAEB8; margin-top: 4px; }
 
 /* SVGs */
 function muscleSVG(id, c) {
