@@ -256,10 +256,41 @@ function getEffectiveEquip(stored, ex) {
   return ex.equip || 'db2';
 }
 
+function decomposePlates(total) {
+  let rem = Math.max(0, Math.round(Number(total) || 0));
+  const plates = [];
+  [5, 2, 1].forEach(size => {
+    while (rem >= size) {
+      plates.push(size);
+      rem -= size;
+    }
+  });
+  return plates;
+}
+
+function normalizeSide(side) {
+  return Array.isArray(side) ? side.filter(v => [1, 2, 5].includes(v)) : decomposePlates(side);
+}
+
+function sideWeight(side) {
+  return normalizeSide(side).reduce((sum, plate) => sum + plate, 0);
+}
+
+function splitDefaultPlates(kg) {
+  const added = Math.max(0, Math.round((Number(kg) || 2) - 2));
+  const left = Math.floor(added / 2);
+  const right = added - left;
+  return { left: decomposePlates(left), right: decomposePlates(right) };
+}
+
 function makeDefaultDbState(ex, equip, band = null) {
-  const kg = ex.kg || 2;
-  const plates = Math.max(0, kg - 2);
-  return { equip, upper: { left: plates, right: plates }, lower: { left: plates, right: plates }, band };
+  const plates = splitDefaultPlates(ex.kg);
+  return {
+    equip,
+    upper: { left: [...plates.left], right: [...plates.right] },
+    lower: { left: [...plates.left], right: [...plates.right] },
+    band
+  };
 }
 
 function makeWeightStateForEquip(ex, equip, previous) {
@@ -269,6 +300,10 @@ function makeWeightStateForEquip(ex, equip, previous) {
   if (previous && typeof previous === 'object' && previous.upper !== undefined) {
     const next = JSON.parse(JSON.stringify(previous));
     next.equip = equip;
+    next.upper.left = normalizeSide(next.upper.left);
+    next.upper.right = normalizeSide(next.upper.right);
+    next.lower.left = normalizeSide(next.lower.left);
+    next.lower.right = normalizeSide(next.lower.right);
     if (!('band' in next)) next.band = null;
     return next;
   }
@@ -284,7 +319,7 @@ function getDisplayWeight(stored, equip, fallbackKg, bandColorFallback) {
   }
   // гантели
   if (stored && typeof stored === 'object') {
-    const total = 2 + (stored.upper?.left || 0) + (stored.upper?.right || 0);
+    const total = 2 + sideWeight(stored.upper?.left) + sideWeight(stored.upper?.right);
     // если к гантелям добавлена резинка — показываем эмодзи + вес
     const main = stored.band ? bandEmoji[stored.band] + ' ' + total : total;
     return { main, sub: 'кг' };
@@ -465,6 +500,10 @@ function openWeightModal(exId) {
       // корректный объект гантелей
       wgt_state = JSON.parse(JSON.stringify(saved));
       wgt_state.equip = wgt_equip;
+      wgt_state.upper.left = normalizeSide(wgt_state.upper.left);
+      wgt_state.upper.right = normalizeSide(wgt_state.upper.right);
+      wgt_state.lower.left = normalizeSide(wgt_state.lower.left);
+      wgt_state.lower.right = normalizeSide(wgt_state.lower.right);
       if (!('band' in wgt_state)) wgt_state.band = null;
     } else {
       // FIX 1: если сохранённый вес — от резинки или отсутствует, инициализируем заново
@@ -513,18 +552,30 @@ function cloneDb(src) {
   updateWgtUI();
 }
 
-function modifyPlate(delta) {
-  let v = wgt_state[wgt_db][wgt_side];
-  v = Math.max(0, v + delta);
-  wgt_state[wgt_db][wgt_side] = v;
-  if (wgt_symm) { const m = wgt_side === 'left' ? 'right' : 'left'; wgt_state[wgt_db][m] = v; }
+function changePlateOnSide(db, side, direction, plate) {
+  const plates = normalizeSide(wgt_state[db][side]);
+  if (direction > 0) {
+    plates.push(plate);
+  } else {
+    const idx = plates.lastIndexOf(plate);
+    if (idx >= 0) plates.splice(idx, 1);
+  }
+  wgt_state[db][side] = plates;
+}
+
+function modifyPlate(direction, plate) {
+  changePlateOnSide(wgt_db, wgt_side, direction, plate);
+  if (wgt_symm) {
+    const mirror = wgt_side === 'left' ? 'right' : 'left';
+    changePlateOnSide(wgt_db, mirror, direction, plate);
+  }
   updateWgtUI();
 }
 
 function updateWgtUI() {
   if (wgt_equip === 'band') return;
-  const tU = 2 + wgt_state.upper.left + wgt_state.upper.right;
-  const tL = 2 + wgt_state.lower.left + wgt_state.lower.right;
+  const tU = 2 + sideWeight(wgt_state.upper.left) + sideWeight(wgt_state.upper.right);
+  const tL = 2 + sideWeight(wgt_state.lower.left) + sideWeight(wgt_state.lower.right);
   document.getElementById('tv-upper').textContent = tU;
   document.getElementById('tv-lower').textContent = tL;
   document.querySelectorAll('.db-row').forEach(r => r.classList.remove('active-db'));
@@ -539,13 +590,12 @@ function updateWgtUI() {
 }
 
 function renderPlates(db, side, elId) {
-  const SIZES = [
-    { w: 14, fill: '#FF3B30', dark: '#D4291F', val: 5 },
-    { w: 10, fill: '#34C759', dark: '#1A9E45', val: 2 },
-    { w: 7, fill: '#0066FF', dark: '#004FCC', val: 1 },
-  ];
-  let rem = wgt_state[db][side]; const plates = [];
-  for (const s of SIZES) { while (rem >= s.val && plates.length < 6) { plates.push(s); rem -= s.val; } }
+  const PLATE = {
+    1: { w: 7, fill: '#0066FF', dark: '#004FCC' },
+    2: { w: 10, fill: '#34C759', dark: '#1A9E45' },
+    5: { w: 14, fill: '#FF3B30', dark: '#D4291F' },
+  };
+  const plates = normalizeSide(wgt_state[db][side]).map(val => ({ ...PLATE[val], val }));
   let html = '';
   if (side === 'left') {
     let lx = 42; plates.forEach(p => {
